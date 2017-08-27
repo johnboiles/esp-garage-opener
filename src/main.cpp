@@ -20,22 +20,53 @@ RemoteDebug Debug;
 #define mqtt_server "10.0.0.2"
 #define mqtt_user "homeassistant"
 
-// NOTE: These messages tend to be longer than PubSubClient likes so you need to modify
-// MQTT_MAX_PACKET_SIZE in PubSubClient.h
-const PROGMEM char* garage_door_config_message = "{\"name\": \"Esp8266 Temperature\", \"device_class\": \"sensor\", \"unit_of_measurement\": \"°C\"}";
+//Define the pins
+#define RELAY_PIN D2
+#define DOOR_PIN D1
 
-// Home-assistant auto-discovery <discovery_prefix>/<component>/[<node_id>/]<object_id>/<>
-const PROGMEM char* garage_door_event_topic = "homeassistant/sensor/esp8266/humidity/event";
-const PROGMEM char* garage_door_state_topic = "homeassistant/sensor/esp8266/temperature/state";
-const PROGMEM char* garage_door_config_topic = "homeassistant/sensor/esp8266/humidity/config";
+const char compile_date[] = __DATE__ " " __TIME__;
+
+//Setup Variables
+String switch1;
+String strTopic;
+String strPayload;
+char* door_state = (char *)"UNDEFINED";
+char* last_state = (char *)"";
+long lastMsg = 0;
+
+const PROGMEM char* button_topic = "garage/button";
+const PROGMEM char* door_topic = "garage/door";
 
 WiFiClient wifiClient;
 PubSubClient client(wifiClient);
 
+void callback(char* topic, byte* payload, unsigned int length) {
+  //if the 'garage/button' topic has a payload "OPEN", then 'click' the relay
+  payload[length] = '\0';
+  strTopic = String((char*)topic);
+  if (strTopic == button_topic)
+  {
+    switch1 = String((char*)payload);
+    if (switch1 == "OPEN")
+    {
+      //'click' the relay
+      Serial.println("ON");
+      digitalWrite(RELAY_PIN, HIGH);
+      delay(600);
+      digitalWrite(RELAY_PIN, LOW);
+    }
+  }
+}
+
 void setup() {
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);
+  pinMode(DOOR_PIN, INPUT_PULLUP);
+
   // put your setup code here, to run once:
   Serial.begin(115200);
-  Serial.println();
+  Serial.println("Built on");
+  Serial.println(compile_date);
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -67,12 +98,6 @@ void setup() {
   #endif
 }
 
-bool has_sent_discover_config = false;
-
-void send_discover_config() {
-  client.publish(garage_door_config_topic, garage_door_config_message, true);
-}
-
 void reconnect() {
   // Loop until we're reconnected
   while (!client.connected()) {
@@ -80,9 +105,6 @@ void reconnect() {
     // Attempt to connect
     if (client.connect("ESP8266Client", mqtt_user, mqtt_password)) {
       DLOG("MQTT connected\n");
-      if (!has_sent_discover_config) {
-        send_discover_config();
-      }
       client.subscribe("garage/#");
     } else {
       DLOG("MQTT failed rc=%d try again in 5 seconds\n", client.state());
@@ -90,31 +112,13 @@ void reconnect() {
   }
 }
 
-void callback(char* topic, byte* payload, unsigned int length) {
-  //if the 'garage/button' topic has a payload "OPEN", then 'click' the relay
-  payload[length] = '\0';
-  strTopic = String((char*)topic);
-  if (strTopic == button_topic)
-  {
-    switch1 = String((char*)payload);
-    if (switch1 == "OPEN")
-    {
-      //'click' the relay
-      Serial.println("ON");
-      pinMode(RELAY_PIN, HIGH);
-      delay(600);
-      pinMode(RELAY_PIN, LOW);
-    }
-  }
-}
-
 void checkDoorState() {
   //Checks if the door state has changed, and MQTT pub the change
   last_state = door_state; //get previous state of door
-  if (digitalRead(DOOR_PIN) == 0) // get new state of door
-    door_state = "OPENED";
-  else if (digitalRead(DOOR_PIN) == 1)
-    door_state = "CLOSED";
+  if (digitalRead(DOOR_PIN) == 1) // get new state of door
+    door_state = (char *)"OPENED";
+  else if (digitalRead(DOOR_PIN) == 0)
+    door_state = (char *)"CLOSED";
 
   if (last_state != door_state) { // if the state has changed then publish the change
     client.publish(door_topic, door_state);
@@ -128,18 +132,14 @@ void checkDoorState() {
   }
 }
 
-
 void loop() {
+  //If MQTT client can't connect to broker, then reconnect
+  if (!client.connected()) {
+    reconnect();
+  }
+  checkDoorState();
   ArduinoOTA.handle();
   yield();
   client.loop();
   Debug.handle();
-
-  long now = millis();
-
-  if (client.connected()) {
-
-  } else {
-    reconnect();
-  }
 }
