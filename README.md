@@ -1,3 +1,5 @@
+*DEPRECATED. I've now moved to using [ESPHome](https://esphome.io/) for my garage door controller. See [here](https://github.com/johnboiles/homeassistant-config/tree/master/esphome) for my ESPHome configs (specifically look at [`garage_door.yaml`](https://github.com/johnboiles/homeassistant-config/blob/master/esphome/garage_door.yaml).*
+
 # esp-garage-opener
 
 Control and monitor your garage door over MQTT with Home Assistant with an ESP8266, a relay, and a magnetic reed switch.
